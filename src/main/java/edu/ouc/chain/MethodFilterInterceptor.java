@@ -10,7 +10,6 @@ public class MethodFilterInterceptor implements MethodInterceptor {
 	public MethodFilterInterceptor(Set<String> exclusions){
 		this.exclusions = exclusions;
 	}
-	
 	@Override
 	public Object invoke(MethodInvocation invocation) throws Exception {
 		String methodName = invocation.getMethod().getName();
