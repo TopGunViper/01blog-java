@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 public class TimeInterceptor implements MethodInterceptor {
 
 	private static Logger logger = LoggerFactory.getLogger(TimeInterceptor.class);
-	
 	@Override
 	public Object invoke(MethodInvocation invocation) throws Exception {
 		long startTime = System.currentTimeMillis();
