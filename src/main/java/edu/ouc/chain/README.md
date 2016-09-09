@@ -38,7 +38,7 @@ public class InterceptorChainFactory {
 		interceptorList.add(new TimeInterceptor());
 		Set<String> exclusions = new HashSet<String>();
 		exclusions.add("test");
-		exclusions.add("insert");//新需要增拦截方法名
+		exclusions.add("insert");//新增需要拦截方法名
 		interceptorList.add(new MethodFilterInterceptor(exclusions));
 		return interceptorList;
 	}
