@@ -7,9 +7,15 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 
+/**
+ * Server handler
+ * 
+ * @author wqx
+ */
 public class Handler implements Runnable {
 
 	private SocketChannel sc;
+	
 	private SelectionKey sk;
 
 	private static final String RESPONSE = "handle request and response from server.";
@@ -25,11 +31,12 @@ public class Handler implements Runnable {
 	public void run() {
 		SocketChannel sc = (SocketChannel)sk.channel();
 		String msg = doRead(sc);
-		System.out.println("request from client :" + msg);
-		doWrite(sc);
+		
+		String resp = process(msg);
+		
+		doWrite(sc,resp);
 	}
 	private String doRead(SocketChannel sc){
-
 		ByteBuffer buf = ByteBuffer.allocate(1024);
 		String msg = "";
 		try{
@@ -44,13 +51,23 @@ public class Handler implements Runnable {
 
 		return msg;
 	}
-	private void doWrite(SocketChannel sc){
-		byte[] bytes = RESPONSE.getBytes();
+	private void doWrite(SocketChannel sc, String resp){
+		byte[] bytes = resp.getBytes();
 		ByteBuffer buf = ByteBuffer.allocate(bytes.length);
 		buf.put(bytes);
 		buf.flip();
 		try {
 			sc.write(buf);
 		} catch (IOException e) {}
+	}
+	/**
+	 * process request and get response
+	 * 
+	 * @param request
+	 * @return
+	 */
+	private String process(String request){
+		System.out.println("process request and produce response");
+		return RESPONSE;
 	}
 }
