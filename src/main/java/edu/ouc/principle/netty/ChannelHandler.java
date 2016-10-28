@@ -1,7 +1,7 @@
 package edu.ouc.principle.netty;
 
 /**
- * 
+ * ChannelHandler
  * 
  * @author wqx
  *
@@ -13,6 +13,5 @@ public interface ChannelHandler {
 	void exceptionCaught(ChannelHandler handler, Throwable cause) throws Exception;
 	
 	void channelRead(ChannelHandler handler, Object msg) throws Exception;
-	
 	
 }
