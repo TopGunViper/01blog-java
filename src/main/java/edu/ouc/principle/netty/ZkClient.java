@@ -2,7 +2,7 @@ package edu.ouc.principle.netty;
 
 public class ZkClient {
 	
-	private volatile State state = State.CONNECTED;
+	private volatile State state = State.UN_CONNECTED;
 	
 	
 	enum State{
@@ -10,14 +10,16 @@ public class ZkClient {
 		CONNECTING,
 		//已连接
 		CONNECTED,
+		//已连接
+		UN_CONNECTED,
 		//已关闭
 		CLOSE;
 		
 		public boolean isConnected(){
 			return this == CONNECTED;
 		}
-		public boolean isClosed(){
-			return this == CLOSE;
+		public boolean isAlive(){
+			return this != CLOSE;
 		}
 	}
 }
