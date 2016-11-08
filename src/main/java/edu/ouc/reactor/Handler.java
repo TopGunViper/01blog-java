@@ -1,6 +1,7 @@
 package edu.ouc.reactor;
 
 import java.io.IOException;
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -15,10 +16,16 @@ import java.nio.charset.Charset;
 public class Handler implements Runnable {
 
 	private SocketChannel sc;
-	
+
 	private SelectionKey sk;
 
-	private static final String RESPONSE = "handle request and response from server.";
+	private volatile State state;
+
+	private static int DEFAULT_BUFSIZE = 1024;
+
+	private ByteBuffer inputBuf = ByteBuffer.allocate(DEFAULT_BUFSIZE);
+
+	private ByteBuffer outputBuf = ByteBuffer.allocate(DEFAULT_BUFSIZE);
 
 	public Handler(Selector sel,SocketChannel channel) throws IOException{
 		sc = channel;
@@ -29,35 +36,41 @@ public class Handler implements Runnable {
 	}
 	@Override
 	public void run() {
-		SocketChannel sc = (SocketChannel)sk.channel();
-		String msg = doRead(sc);
-		
-		String resp = process(msg);
-		
-		doWrite(sc,resp);
-	}
-	private String doRead(SocketChannel sc){
-		ByteBuffer buf = ByteBuffer.allocate(1024);
-		String msg = "";
-		try{
-			int readBytes = sc.read(buf);
-			if(readBytes > 0){
-				buf.flip();
-				byte[] dest = new byte[buf.remaining()];
-				buf.get(dest);
-				msg = new String(dest,Charset.forName("UTF-8"));
-			}
-		}catch(IOException e){}
 
-		return msg;
+		switch(state){
+		case READING:doRead();break; 
+		case SENDING:doSend();break;
+		}
 	}
-	private void doWrite(SocketChannel sc, String resp){
-		byte[] bytes = resp.getBytes();
-		ByteBuffer buf = ByteBuffer.allocate(bytes.length);
-		buf.put(bytes);
-		buf.flip();
+	private void doRead(){
 		try {
-			sc.write(buf);
+			sc.read(inputBuf);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		if(inputComplete()){//输入完成
+			process();
+			state = State.SENDING;
+			//注册OP_WRITE
+			sk.interestOps(SelectionKey.OP_WRITE);
+		}
+	}
+
+	private boolean inputComplete(){
+		//1.缓存区是否已满
+		//2.半包读写问题
+		return true;
+	}
+	private boolean outputComplete(){
+		return true;
+	}
+
+	private void doSend(){
+		try {
+			sc.write(outputBuf);
+			if(outputComplete()){
+				sk.cancel();
+			}
 		} catch (IOException e) {}
 	}
 	/**
@@ -66,8 +79,37 @@ public class Handler implements Runnable {
 	 * @param request
 	 * @return
 	 */
-	private String process(String request){
+	private void process(){
 		System.out.println("process request and produce response");
-		return RESPONSE;
+
+		inputBuf.flip();
+		byte[] dest = new byte[inputBuf.remaining()];
+		inputBuf.get(dest);
+		String msg = new String(dest,Charset.forName("UTF-8"));
+
+		String resp = "";
+
+		switch(msg){
+		case "request1" : resp = "response1";break;
+		case "request2" : resp = "response2";break;
+		case "request3" : resp = "response3";break;
+		default : resp = "";
+		}
+		
+		try{
+			outputBuf.put(resp.getBytes());
+		}catch(BufferOverflowException e){
+			//发送缓冲区溢出，应该进行扩容操作
+		}
+	}
+
+	enum State{
+		READING,SENDING;
+		public boolean isReadable(){
+			return this == READING;
+		}
+		public boolean isWritable(){
+			return this == SENDING;
+		}
 	}
 }
