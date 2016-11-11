@@ -61,16 +61,11 @@ public class Handler implements Runnable {
 		//2.∞Î∞¸∂¡–¥Œ Ã‚
 		return true;
 	}
-	private boolean outputComplete(){
-		return true;
-	}
 
 	private void doSend(){
 		try {
 			sc.write(outputBuf);
-			if(outputComplete()){
-				sk.cancel();
-			}
+			sk.cancel();
 		} catch (IOException e) {}
 	}
 	/**
