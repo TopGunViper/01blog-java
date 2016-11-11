@@ -64,7 +64,9 @@ public class Handler implements Runnable {
 
 	private void doSend(){
 		try {
-			sc.write(outputBuf);
+			while(outputBuf.hasRemaining()){
+				sc.write(outputBuf);
+			}
 			sk.cancel();
 		} catch (IOException e) {}
 	}
