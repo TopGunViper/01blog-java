@@ -19,9 +19,9 @@ import org.slf4j.LoggerFactory;
  * 
  * @author wqx
  */
-public class Processor implements Runnable {
+public class ServerProcessor implements Runnable {
 
-	private static final Logger LOG = LoggerFactory.getLogger(Processor.class);
+	private static final Logger LOG = LoggerFactory.getLogger(ServerProcessor.class);
 
 	Reactor reactor;
 
@@ -38,7 +38,7 @@ public class Processor implements Runnable {
 	private LinkedBlockingQueue<ByteBuffer> outputQueue = new LinkedBlockingQueue<ByteBuffer>();
 
 
-	public Processor(Reactor reactor, Selector sel,SocketChannel channel) throws IOException{
+	public ServerProcessor(Reactor reactor, Selector sel,SocketChannel channel) throws IOException{
 		this.reactor = reactor;
 		sc = channel;
 		sc.configureBlocking(false);
@@ -91,6 +91,9 @@ public class Processor implements Runnable {
 			if(byteSize < 0){
 				LOG.error("Unable to read additional data");
 			}
+			if(LOG.isDebugEnabled()){
+				LOG.debug("inputBuffer.hasRemaining():" + inputBuffer.hasRemaining());
+			}
 			if(!inputBuffer.hasRemaining()){
 				
 				if(inputBuffer == lenBuffer){
@@ -99,6 +102,9 @@ public class Processor implements Runnable {
 					int len = inputBuffer.getInt();
 					if(len < 0){
 						throw new IllegalArgumentException("Illegal data length");
+					}
+					if(LOG.isDebugEnabled()){
+						LOG.debug("receive data length:" + len);
 					}
 					//prepare to receive data
 					inputBuffer = ByteBuffer.allocate(len);
@@ -116,7 +122,6 @@ public class Processor implements Runnable {
 					}
 				}
 			}
-			System.out.println("byteSize:" + byteSize);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
