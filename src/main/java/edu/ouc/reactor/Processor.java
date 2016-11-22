@@ -19,9 +19,9 @@ import org.slf4j.LoggerFactory;
  * 
  * @author wqx
  */
-public class ServerProcessor implements Runnable {
+public class Processor implements Runnable {
 
-	private static final Logger LOG = LoggerFactory.getLogger(ServerProcessor.class);
+	private static final Logger LOG = LoggerFactory.getLogger(Processor.class);
 
 	Reactor reactor;
 
@@ -37,8 +37,7 @@ public class ServerProcessor implements Runnable {
 
 	private LinkedBlockingQueue<ByteBuffer> outputQueue = new LinkedBlockingQueue<ByteBuffer>();
 
-
-	public ServerProcessor(Reactor reactor, Selector sel,SocketChannel channel) throws IOException{
+	public Processor(Reactor reactor, Selector sel,SocketChannel channel) throws IOException{
 		this.reactor = reactor;
 		sc = channel;
 		sc.configureBlocking(false);
@@ -49,7 +48,22 @@ public class ServerProcessor implements Runnable {
 	public void sendBuffer(ByteBuffer bb){
 		try{
 			synchronized(this.reactor){
-				outputQueue.add(bb);
+				if(LOG.isDebugEnabled()){
+					LOG.debug("add sendable bytebuffer into outputQueue");
+				}
+				bb.flip();
+				
+				lenBuffer.clear();
+				int len = bb.remaining();
+				lenBuffer.putInt(len);
+				ByteBuffer resp = ByteBuffer.allocate(len+4);
+				lenBuffer.flip();
+				
+				resp.put(lenBuffer);
+				resp.put(bb);
+				
+				outputQueue.add(resp);
+				
 				enableWrite();
 			}
 		}catch(Exception e){
@@ -70,7 +84,7 @@ public class ServerProcessor implements Runnable {
 	}
 	@Override
 	public void run() {
-		if(sc.isOpen()){
+		if(sc.isOpen() && sk.isValid()){
 			if(sk.isReadable()){
 				doRead();
 			}else if(sk.isWritable()){
@@ -88,11 +102,9 @@ public class ServerProcessor implements Runnable {
 	private void doRead(){
 		try {
 			int byteSize = sc.read(inputBuffer);
+			
 			if(byteSize < 0){
 				LOG.error("Unable to read additional data");
-			}
-			if(LOG.isDebugEnabled()){
-				LOG.debug("inputBuffer.hasRemaining():" + inputBuffer.hasRemaining());
 			}
 			if(!inputBuffer.hasRemaining()){
 				
@@ -103,10 +115,7 @@ public class ServerProcessor implements Runnable {
 					if(len < 0){
 						throw new IllegalArgumentException("Illegal data length");
 					}
-					if(LOG.isDebugEnabled()){
-						LOG.debug("receive data length:" + len);
-					}
-					//prepare to receive data
+					//prepare for receiving data
 					inputBuffer = ByteBuffer.allocate(len);
 				}else{
 					//read data
@@ -123,7 +132,13 @@ public class ServerProcessor implements Runnable {
 				}
 			}
 		} catch (IOException e) {
-			e.printStackTrace();
+			LOG.error("Unexcepted Exception during read. e=" + e);
+			try {
+				if(sc != null)
+					sc.close();
+			} catch (IOException e1) {
+				LOG.warn("Ignoring exception when close socketChannel");
+			}
 		}
 	}
 
@@ -146,8 +161,10 @@ public class ServerProcessor implements Runnable {
 			if(outputQueue.size() > 0){
 				ByteBuffer directBuffer = outputDirectBuffer;
 				directBuffer.clear();
-
+				
 				for(ByteBuffer buf : outputQueue){
+					buf.flip();
+					
 					if(buf.remaining() > directBuffer.remaining()){
 						//prevent BufferOverflowException
 						buf = (ByteBuffer) buf.slice().limit(directBuffer.remaining());
@@ -162,7 +179,6 @@ public class ServerProcessor implements Runnable {
 						break;
 					}
 				}
-
 				directBuffer.flip();
 				int sendSize = sc.write(directBuffer);
 				
@@ -187,18 +203,10 @@ public class ServerProcessor implements Runnable {
 				}
 			}
 		} catch (CancelledKeyException e) {
-            LOG.warn("Exception causing close of session 0x"
-                    + " due to " + e);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("CancelledKeyException stack trace", e);
-            }
+            LOG.warn("CancelledKeyException occur e=" + e);
             //close();
         } catch (IOException e) {
-            LOG.warn("Exception causing close of session 0x"
-                    + " due to " + e);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("IOException stack trace", e);
-            }
+            LOG.warn("Exception causing close, due to " + e);
             //close();
         }
 	}
