@@ -1,21 +1,18 @@
 package edu.ouc.reactor;
 
 import java.io.IOException;
-import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.Charset;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Server handler
+ * Server Processor
  * 
  * @author wqx
  */
@@ -45,43 +42,7 @@ public class Processor implements Runnable {
 		sk.attach(this);
 		sel.wakeup();
 	}
-	public void sendBuffer(ByteBuffer bb){
-		try{
-			synchronized(this.reactor){
-				if(LOG.isDebugEnabled()){
-					LOG.debug("add sendable bytebuffer into outputQueue");
-				}
-				bb.flip();
-				
-				lenBuffer.clear();
-				int len = bb.remaining();
-				lenBuffer.putInt(len);
-				ByteBuffer resp = ByteBuffer.allocate(len+4);
-				lenBuffer.flip();
-				
-				resp.put(lenBuffer);
-				resp.put(bb);
-				
-				outputQueue.add(resp);
-				
-				enableWrite();
-			}
-		}catch(Exception e){
-			LOG.error("Unexcepted Exception: ", e);
-		}
-	}
-	private void enableWrite(){
-		int i = sk.interestOps();
-		if((i & SelectionKey.OP_WRITE) == 0){
-			sk.interestOps(i | SelectionKey.OP_WRITE);
-		}
-	}
-	private void disableWrite(){
-		int i = sk.interestOps();
-		if((i & SelectionKey.OP_WRITE) == 1){
-			sk.interestOps(i & (~SelectionKey.OP_WRITE));			
-		}
-	}
+
 	@Override
 	public void run() {
 		if(sc.isOpen() && sk.isValid()){
@@ -95,7 +56,6 @@ public class Processor implements Runnable {
 			try {
 				if(sc != null)
 					sc.close();
-				reactor.currentClients.decrementAndGet();
 			} catch (IOException e) {}
 		}
 	}
@@ -204,11 +164,50 @@ public class Processor implements Runnable {
 			}
 		} catch (CancelledKeyException e) {
             LOG.warn("CancelledKeyException occur e=" + e);
-            //close();
         } catch (IOException e) {
             LOG.warn("Exception causing close, due to " + e);
-            //close();
         }
 	}
+	public void sendBuffer(ByteBuffer bb){
+		try{
+			synchronized(this.reactor){
+				if(LOG.isDebugEnabled()){
+					LOG.debug("add sendable bytebuffer into outputQueue");
+				}
+				//wrap ByteBuffer with length header
+				ByteBuffer wrapped = wrap(bb);
+				
+				outputQueue.add(wrapped);
+				
+				enableWrite();
+			}
+		}catch(Exception e){
+			LOG.error("Unexcepted Exception: ", e);
+		}
+	}
 	
+	private ByteBuffer wrap(ByteBuffer bb){
+		bb.flip();
+		lenBuffer.clear();
+		int len = bb.remaining();
+		lenBuffer.putInt(len);
+		ByteBuffer resp = ByteBuffer.allocate(len+4);
+		lenBuffer.flip();
+		
+		resp.put(lenBuffer);
+		resp.put(bb);
+		return resp;
+	}
+	private void enableWrite(){
+		int i = sk.interestOps();
+		if((i & SelectionKey.OP_WRITE) == 0){
+			sk.interestOps(i | SelectionKey.OP_WRITE);
+		}
+	}
+	private void disableWrite(){
+		int i = sk.interestOps();
+		if((i & SelectionKey.OP_WRITE) == 1){
+			sk.interestOps(i & (~SelectionKey.OP_WRITE));			
+		}
+	}
 }
