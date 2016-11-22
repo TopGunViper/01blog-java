@@ -1,27 +1,17 @@
 package edu.ouc.reactor;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * client
- * blocking i/o 
+ * blocking i/o
  * 
  * @author wqx
  *
@@ -34,56 +24,37 @@ public class Client{
 
 	private SocketChannel sc;
 
-	private CallbackListener listener;
-
-	private static  Serialization serialization;
-
-	static{
-		 serialization = new DefaultJDKSerialization();
-	}
-	
-	private final ByteBuffer lenBuffer = ByteBuffer.allocateDirect(4);
-	
-	private final AtomicLong pendingData = new AtomicLong();
-
 	private volatile boolean isActive;
 
-	public Client connect(InetSocketAddress address) throws IOException{
+	public Client(){
+		try {
+			sc = SocketChannel.open();
+		} catch (IOException e) {}
+	}
+	
+	public void connect(InetSocketAddress address){
 		this.remoteAddress = address;
-		this.isActive = true;
-		sc = SocketChannel.open();
-		socket().connect(remoteAddress);
-		if(listener != null){
-			listener.onConnected();
+		try {
+			socket().connect(remoteAddress);
+			this.isActive = true;
+		} catch (IOException e) {
+			LOG.error("Can not connecting to remoteAddress:" + this.remoteAddress);
+			this.isActive = false;
 		}
-		return this;
-	}
-	public Client hook(CallbackListener listener){
-		this.listener = listener;
-		return this;
-	}
-	public Client serialization(Serialization serialization){
-		this.serialization = serialization;
-		return this;
 	}
 	public Socket socket(){
 		return sc.socket();
 	}
 
-	public void closeGracefully(){
+	public synchronized void close(){
 		if(!isActive) return;
-
-		if(pendingData.get() == 0){
-			try {
-				if(sc != null){
-					isActive = false;
-					sc.close();
-				}
-			} catch (Exception e) {
-				LOG.error("Unexpected Exception occur during close socket, e=" + e);
+		isActive = false;
+		try {
+			if(sc != null){
+				sc.close();
 			}
-		}else{
-			//
+		} catch (Exception e) {
+			LOG.error("Unexpected Exception occur during close socket, e=" + e);
 		}
 	}
 	/**
@@ -93,92 +64,53 @@ public class Client{
 	 * @return
 	 * @throws IOException 
 	 */
-	public ByteBuffer syncSend(final Object msg){
+	public ByteBuffer send(final ByteBuffer msg){
 
 		if(msg == null){
 			throw new IllegalArgumentException("msg is null");
+		}
+		if(!isActive){
+			throw new RuntimeException("Connection is invalid");
 		}
 		try{
-			byte[] b = serialization.serialize(msg);
-			int capacity = b.length;
+			ByteBuffer lenBuffer = ByteBuffer.allocate(4);
+			int capacity = msg.remaining();
 			lenBuffer.putInt(capacity);
 			lenBuffer.flip();
-			
+
 			ByteBuffer bb = ByteBuffer.allocate(capacity + 4);
 			bb.put(lenBuffer);
-			bb.put(b);
-			
+			bb.put(msg);
+
 			bb.flip();//prepare for write
-			sc.write(bb);
-			while(bb.hasRemaining()){
-				sc.write(bb);
+			sc.write(bb);//blocking model
+
+			if(LOG.isDebugEnabled()){
+				LOG.debug("Write msg to SocketChannel");
 			}
-			
 		}catch(Exception e){
-			LOG.error("Unexpected Exception , e=" + e);
-		}finally{
-			lenBuffer.clear();
+			LOG.error("Unexpected Exception during writing msg, e=" + e);
 		}
-
-		return null;
+		
+		return readResponse();
 	}
-
-	/**
-	 * send msg asynchronous
-	 * 
-	 * @param msg
-	 * @param listener
-	 * @return
-	 */
-	public Future<ByteBuffer> asyncSend(final ByteBuffer msg){
-		if(msg == null){
-			throw new IllegalArgumentException("msg is null");
+	private ByteBuffer readResponse(){
+		ByteBuffer resp = null;;
+		try {
+			int len = readLength();
+			resp = ByteBuffer.allocate(len);
+			sc.read(resp);
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
-		Future<ByteBuffer> retVal = new FutureTask<>(new Callable<ByteBuffer>(){
-			@Override
-			public ByteBuffer call() throws Exception {
-				pendingData.incrementAndGet();
-				return syncSend(msg);
-			}
-		});
-		if(listener != null){
-			try {
-				ByteBuffer bb = retVal.get();
-				/**
-				 * CancellationException
-				 * ExecutionException
-				 * InterruptedException 
-				 */
-				pendingData.decrementAndGet();
-				//
-			} catch (InterruptedException e) {
-				LOG.error("InterruptedException :" + e);
-			} catch (ExecutionException e) {
-				LOG.error("ExecutionException :" + e);
-			}
-		}
-		return retVal;
+		return (ByteBuffer) resp.flip();
 	}
-
-	static class DefaultJDKSerialization implements Serialization{
-
-		@Override
-		public byte[] serialize(Object src) throws IOException {
-			ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			ObjectOutputStream oos = new ObjectOutputStream(baos);
-			oos.writeObject(src);
-			oos.flush();
-			oos.close();
-			return baos.toByteArray();
-		}
-
-		@Override
-		public Object deserialize(byte[] src, Class<?> cls) throws IOException, ClassNotFoundException {
-			Object object=null;
-			ByteArrayInputStream sais=new ByteArrayInputStream(src);
-			ObjectInputStream ois = new ObjectInputStream(sais);
-			object=ois.readObject();
-			return object;
-		}
+	private int readLength(){
+		ByteBuffer lenBuffer = ByteBuffer.allocateDirect(4);
+		try {
+			sc.read(lenBuffer);//blocked
+		} catch (IOException e) {}
+		lenBuffer.flip();
+		return lenBuffer.getInt();
 	}
 }
