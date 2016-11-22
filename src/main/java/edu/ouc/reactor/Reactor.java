@@ -2,12 +2,16 @@ package edu.ouc.reactor;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Reactor
@@ -16,19 +20,34 @@ import java.util.Set;
  *
  */
 public class Reactor implements Runnable {
+
+	private static final Logger LOG = LoggerFactory.getLogger(Reactor.class);
 	
 	private Selector selector;
+	
 	private ServerSocketChannel ssc;
+
+	private Handler DEFAULT_HANDLER = new Handler(){
+		@Override
+		public void processRequest(Processor processor, ByteBuffer msg) {
+			//NOOP
+		}
+	};
+	private Handler handler = DEFAULT_HANDLER;
+	
+	
 	/**
 	 * Æô¶¯½×¶Î
 	 * @param port
 	 * @throws IOException
 	 */
-	public Reactor(int port) throws IOException{
+	public Reactor(int port, int maxClients, Handler serverHandler) throws IOException{
 		selector = Selector.open();
 		ssc = ServerSocketChannel.open();
-		ssc.socket().bind(new InetSocketAddress(port));
 		ssc.configureBlocking(false);
+		ssc.socket().bind(new InetSocketAddress(port));
+		
+		this.handler = serverHandler;
 		SelectionKey sk = ssc.register(selector, SelectionKey.OP_ACCEPT);
 		sk.attach(new Acceptor());
 	}
@@ -37,21 +56,24 @@ public class Reactor implements Runnable {
 	 */
 	@Override
 	public void run() {
-		System.out.println("Reactor started!!!");
-		try {
-			while(!Thread.interrupted()){
-				selector.select();
-				Set<SelectionKey> keys = selector.selectedKeys();
+		while(!ssc.socket().isClosed()){
+			try {
+				selector.select(1000);
+				Set<SelectionKey> keys;
+				synchronized(this){
+					keys = selector.selectedKeys();
+				}
 				Iterator<SelectionKey> it = keys.iterator();
 				while(it.hasNext()){
 					SelectionKey key = it.next();
 					dispatch(key);
 					it.remove();
 				}
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
-		} catch (IOException e) {
-			e.printStackTrace();
 		}
+        close();
 	}
 	public void dispatch(SelectionKey key){
 		Runnable r = (Runnable)key.attachment();
@@ -63,18 +85,34 @@ public class Reactor implements Runnable {
 	 * 
 	 */
 	class Acceptor implements Runnable{
-		
+
 		@Override
 		public void run() {
 			SocketChannel sc;
 			try {
 				sc = ssc.accept();
 				if(sc != null){
-					new Handler(selector,sc);
+					new Processor(Reactor.this,selector,sc);
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+		}
+	}
+	
+	public void close(){
+		try {
+			selector.close();
+			if(LOG.isDebugEnabled()){
+				LOG.debug("Close selector");
+			}
+		} catch (IOException e) {
+			LOG.warn("Ignoring exception during close selector, e=" + e);
+		}
+	}
+	public void processRequest(Processor processor, ByteBuffer msg){
+		if(handler != DEFAULT_HANDLER){
+			handler.processRequest(processor, msg);
 		}
 	}
 }
