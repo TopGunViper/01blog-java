@@ -45,59 +45,60 @@ public class Processor implements Runnable {
 
 	@Override
 	public void run() {
-		if(sc.isOpen() && sk.isValid()){
-			if(sk.isReadable()){
-				doRead();
-			}else if(sk.isWritable()){
-				doSend();
-			}
-		}else{
-			LOG.error("try to do read/write operation on null socket");
-			try {
-				if(sc != null)
-					sc.close();
-			} catch (IOException e) {}
-		}
-	}
-	private void doRead(){
 		try {
-			int byteSize = sc.read(inputBuffer);
-			
-			if(byteSize < 0){
-				LOG.error("Unable to read additional data");
-			}
-			if(!inputBuffer.hasRemaining()){
-				
-				if(inputBuffer == lenBuffer){
-					//read length
-					inputBuffer.flip();
-					int len = inputBuffer.getInt();
-					if(len < 0){
-						throw new IllegalArgumentException("Illegal data length");
-					}
-					//prepare for receiving data
-					inputBuffer = ByteBuffer.allocate(len);
-				}else{
-					//read data
-					if(inputBuffer.hasRemaining()){
-						sc.read(inputBuffer);
-					}
-					if(!inputBuffer.hasRemaining()){
-						inputBuffer.flip();
-						processRequest();
-						//clear lenBuffer and waiting for next reading operation 
-						lenBuffer.clear();
-						inputBuffer = lenBuffer;
-					}
+			if(sc.isOpen() && sk.isValid()){
+				if(sk.isReadable()){
+					doRead();
+				}else if(sk.isWritable()){
+					doSend();
 				}
+			}else{
+				LOG.error("try to do read/write operation on null socket");
+				try {
+					if(sc != null)
+						sc.close();
+				} catch (IOException e) {}
 			}
+		} catch (RuntimeException e) {
+			LOG.warn("caught runtime exception",e);
+            close();
 		} catch (IOException e) {
-			LOG.error("Unexcepted Exception during read. e=" + e);
-			try {
-				if(sc != null)
-					sc.close();
-			} catch (IOException e1) {
-				LOG.warn("Ignoring exception when close socketChannel");
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("IOException stack trace", e);
+            }
+            close();
+        }
+	}
+	private void doRead() throws IOException{
+		int byteSize = sc.read(inputBuffer);
+
+		if(byteSize < 0){
+			LOG.error("Unable to read additional data, client may closed socket.");
+			throw new RuntimeException("Unable to read additional data");
+		}
+		if(!inputBuffer.hasRemaining()){
+
+			if(inputBuffer == lenBuffer){
+				//read length
+				inputBuffer.flip();
+				int len = inputBuffer.getInt();
+				if(len < 0){
+					throw new IllegalArgumentException("Illegal data length");
+				}
+				//prepare for receiving data
+				inputBuffer = ByteBuffer.allocate(len);
+			}else{
+				//read data
+				if(inputBuffer.hasRemaining()){
+					sc.read(inputBuffer);
+				}
+				if(!inputBuffer.hasRemaining()){
+					inputBuffer.flip();
+					processRequest();
+					//clear lenBuffer and waiting for next reading operation 
+					lenBuffer.clear();
+					inputBuffer = lenBuffer;
+				}
 			}
 		}
 	}
@@ -111,62 +112,57 @@ public class Processor implements Runnable {
 	private void processRequest(){
 		reactor.processRequest(this,inputBuffer);
 	}
-	private void doSend(){
-		try{
-			/**
-			 * write data to channel£º
-			 * step 1: write the length of data(occupy 4 byte)
-			 * step 2: data content
-			 */
-			if(outputQueue.size() > 0){
-				ByteBuffer directBuffer = outputDirectBuffer;
-				directBuffer.clear();
-				
-				for(ByteBuffer buf : outputQueue){
-					buf.flip();
-					
-					if(buf.remaining() > directBuffer.remaining()){
-						//prevent BufferOverflowException
-						buf = (ByteBuffer) buf.slice().limit(directBuffer.remaining());
-					}
-					//transfers the bytes remaining in buf into  directBuffer
-					int p = buf.position();
-					directBuffer.put(buf);
-					//reset position
-					buf.position(p);
+	private void doSend() throws IOException{
+		/**
+		 * write data to channel£º
+		 * step 1: write the length of data(occupy 4 byte)
+		 * step 2: data content
+		 */
+		if(outputQueue.size() > 0){
+			ByteBuffer directBuffer = outputDirectBuffer;
+			directBuffer.clear();
 
-					if(!directBuffer.hasRemaining()){
-						break;
-					}
+			for(ByteBuffer buf : outputQueue){
+				buf.flip();
+
+				if(buf.remaining() > directBuffer.remaining()){
+					//prevent BufferOverflowException
+					buf = (ByteBuffer) buf.slice().limit(directBuffer.remaining());
 				}
-				directBuffer.flip();
-				int sendSize = sc.write(directBuffer);
-				
-				while(!outputQueue.isEmpty()){
-					ByteBuffer buf = outputQueue.peek();
-					int left = buf.remaining() - sendSize;
-					if(left > 0){
-						buf.position(buf.position() + sendSize);
-						break;
-					}
-					sendSize -= buf.remaining();
-					outputQueue.remove();
-				}
-			}
-			synchronized(reactor){
-				if(outputQueue.size() == 0){
-					//disable write
-					disableWrite();
-				}else{
-					//enable write
-					enableWrite();
+				//transfers the bytes remaining in buf into  directBuffer
+				int p = buf.position();
+				directBuffer.put(buf);
+				//reset position
+				buf.position(p);
+
+				if(!directBuffer.hasRemaining()){
+					break;
 				}
 			}
-		} catch (CancelledKeyException e) {
-            LOG.warn("CancelledKeyException occur e=" + e);
-        } catch (IOException e) {
-            LOG.warn("Exception causing close, due to " + e);
-        }
+			directBuffer.flip();
+			int sendSize = sc.write(directBuffer);
+
+			while(!outputQueue.isEmpty()){
+				ByteBuffer buf = outputQueue.peek();
+				int left = buf.remaining() - sendSize;
+				if(left > 0){
+					buf.position(buf.position() + sendSize);
+					break;
+				}
+				sendSize -= buf.remaining();
+				outputQueue.remove();
+			}
+		}
+		synchronized(reactor){
+			if(outputQueue.size() == 0){
+				//disable write
+				disableWrite();
+			}else{
+				//enable write
+				enableWrite();
+			}
+		}
+
 	}
 	public void sendBuffer(ByteBuffer bb){
 		try{
@@ -176,16 +172,16 @@ public class Processor implements Runnable {
 				}
 				//wrap ByteBuffer with length header
 				ByteBuffer wrapped = wrap(bb);
-				
+
 				outputQueue.add(wrapped);
-				
+
 				enableWrite();
 			}
 		}catch(Exception e){
 			LOG.error("Unexcepted Exception: ", e);
 		}
 	}
-	
+
 	private ByteBuffer wrap(ByteBuffer bb){
 		bb.flip();
 		lenBuffer.clear();
@@ -193,7 +189,7 @@ public class Processor implements Runnable {
 		lenBuffer.putInt(len);
 		ByteBuffer resp = ByteBuffer.allocate(len+4);
 		lenBuffer.flip();
-		
+
 		resp.put(lenBuffer);
 		resp.put(bb);
 		return resp;
@@ -209,5 +205,38 @@ public class Processor implements Runnable {
 		if((i & SelectionKey.OP_WRITE) == 1){
 			sk.interestOps(i & (~SelectionKey.OP_WRITE));			
 		}
+	}
+	
+	private void close(){
+		//remove this Processor from reactor
+		//cleanup();
+		
+		//close socket
+		closeSocket();
+		//cancel SelectionKey
+		if(sk != null){
+			try {
+				sk.cancel();
+			} catch (Exception e) {
+				if(LOG.isDebugEnabled()){
+					LOG.debug("ignoring exception during selectionkey cancel", e);
+				}
+			}
+		}
+	}
+	private void closeSocket(){
+		if(!sc.isOpen()){
+			return ;
+		}
+		
+		LOG.info("Closed socket connection for client "
+				+ sc.socket().getRemoteSocketAddress());
+		try {
+            sc.close();
+        } catch (IOException e) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("ignoring exception during socketchannel close", e);
+            }
+        }
 	}
 }
