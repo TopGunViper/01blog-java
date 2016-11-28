@@ -6,6 +6,8 @@ import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.slf4j.Logger;
@@ -20,7 +22,7 @@ public class Processor implements Runnable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Processor.class);
 
-	Reactor reactor;
+	final Reactor reactor;
 
 	private SocketChannel sc;
 
@@ -33,7 +35,11 @@ public class Processor implements Runnable {
 	private ByteBuffer outputDirectBuffer = ByteBuffer.allocateDirect(1024 * 64);
 
 	private LinkedBlockingQueue<ByteBuffer> outputQueue = new LinkedBlockingQueue<ByteBuffer>();
-
+	
+	private static final int nThreads = Runtime.getRuntime().availableProcessors() * 2;
+	
+	private static ExecutorService workerPool = Executors.newFixedThreadPool(nThreads); 
+	
 	public Processor(Reactor reactor, Selector sel,SocketChannel channel) throws IOException{
 		this.reactor = reactor;
 		sc = channel;
@@ -59,7 +65,7 @@ public class Processor implements Runnable {
 			} catch (IOException e) {}
 		}
 	}
-	private void doRead(){
+	private synchronized void doRead(){
 		try {
 			int byteSize = sc.read(inputBuffer);
 			
@@ -84,7 +90,7 @@ public class Processor implements Runnable {
 					}
 					if(!inputBuffer.hasRemaining()){
 						inputBuffer.flip();
-						processRequest();
+						workerPool.submit(new Worker(inputBuffer));
 						//clear lenBuffer and waiting for next reading operation 
 						lenBuffer.clear();
 						inputBuffer = lenBuffer;
@@ -103,15 +109,27 @@ public class Processor implements Runnable {
 	}
 
 	/**
-	 * process request and get response
+	 * process request and handoff to workerPool
 	 * 
 	 * @param request
 	 * @return
 	 */
-	private void processRequest(){
-		reactor.processRequest(this,inputBuffer);
+	private synchronized void processAndHandOff(ByteBuffer bb){
+		reactor.processRequest(Processor.this, bb);
 	}
-	private void doSend(){
+	
+	class Worker implements Runnable{
+		ByteBuffer bb;
+		public Worker(ByteBuffer bb){
+			this.bb = ByteBuffer.allocate(bb.remaining());
+			this.bb.put(bb);
+			this.bb.flip();
+		}
+		public void run(){
+			processAndHandOff(bb);
+		}
+	}
+	private synchronized void doSend(){
 		try{
 			/**
 			 * write data to channel£º
