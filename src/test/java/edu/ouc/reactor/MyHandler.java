@@ -16,7 +16,7 @@ public class MyHandler implements Handler {
 		case "request1":resp = "response1";break;
 		case "request2":resp = "response2";break;
 		case "request3":resp = "response3";break;
-		default :resp = "";
+		default :resp = "hello client";
 		}
 		
 		ByteBuffer buf = ByteBuffer.allocate(resp.getBytes().length);
