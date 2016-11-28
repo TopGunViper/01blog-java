@@ -40,7 +40,9 @@ public class Client{
 		} catch (IOException e) {
 			LOG.error("Can not connecting to remoteAddress:" + this.remoteAddress);
 			this.isActive = false;
+			throw new RuntimeException("Can not connecting to remoteAddress:" + this.remoteAddress);
 		}
+		LOG.error("Successfully connecting to remoteAddress:" + this.remoteAddress);
 	}
 	public Socket socket(){
 		return sc.socket();
