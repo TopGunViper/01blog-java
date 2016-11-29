@@ -1,6 +1,7 @@
 package edu.ouc.reactor;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
@@ -16,6 +17,14 @@ public class EventLoop extends Thread{
 	private static final Logger LOG = LoggerFactory.getLogger(EventLoop.class);
 	
 	private Selector selector;
+	
+	private Handler DEFAULT_HANDLER = new Handler(){
+		@Override
+		public void processRequest(Processor processor, ByteBuffer msg) {
+			//NOOP
+		}
+	};
+	private Handler handler = DEFAULT_HANDLER;
 	
     EventLoop(){
         try {
@@ -92,6 +101,12 @@ public class EventLoop extends Thread{
 			r.run();
 	}
 
+	public void processRequest(Processor processor, ByteBuffer msg){
+		if(handler != DEFAULT_HANDLER){
+			handler.processRequest(processor, msg);
+		}
+	}
+	
 	public Selector getSelector() {
 		return selector;
 	}
