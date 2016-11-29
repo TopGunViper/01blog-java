@@ -9,6 +9,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,31 +24,31 @@ public class Reactor implements Runnable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Reactor.class);
 	
+	//just for Acceptor
 	private Selector selector;
+	
+	private EventLoop[] eventLoops;
+	
+	private AtomicInteger index = new AtomicInteger();
 	
 	private ServerSocketChannel ssc;
 
-	private Handler DEFAULT_HANDLER = new Handler(){
-		@Override
-		public void processRequest(Processor processor, ByteBuffer msg) {
-			//NOOP
-		}
-	};
-	private Handler handler = DEFAULT_HANDLER;
-	
-	
 	/**
 	 * 启动阶段
 	 * @param port
 	 * @throws IOException
 	 */
-	public Reactor(int port, int maxClients, Handler serverHandler) throws IOException{
+	public Reactor(int port) throws IOException{
+		
 		selector = Selector.open();
 		ssc = ServerSocketChannel.open();
 		ssc.configureBlocking(false);
 		ssc.socket().bind(new InetSocketAddress(port));
-		
-		this.handler = serverHandler;
+		int nThreads = Runtime.getRuntime().availableProcessors();
+		eventLoops = new EventLoop[nThreads];
+		for(int i = 0; i < nThreads; i++){
+			eventLoops[i] = new EventLoop();			
+		}
 		SelectionKey sk = ssc.register(selector, SelectionKey.OP_ACCEPT);
 		sk.attach(new Acceptor());
 	}
@@ -75,11 +76,17 @@ public class Reactor implements Runnable {
 		}
         close();
 	}
+
 	public void dispatch(SelectionKey key){
 		Runnable r = (Runnable)key.attachment();
 		if(r != null)
 			r.run();
 	}
+
+	private EventLoop nextEventLoop(){
+		return eventLoops[index.incrementAndGet() % eventLoops.length];
+	}
+	
 	/**
 	 * 用于接受TCP连接的Acceptor
 	 * 
@@ -92,7 +99,7 @@ public class Reactor implements Runnable {
 			try {
 				sc = ssc.accept();
 				if(sc != null){
-					new Processor(Reactor.this,selector,sc);
+					new Processor(nextEventLoop(),sc);
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -110,9 +117,5 @@ public class Reactor implements Runnable {
 			LOG.warn("Ignoring exception during close selector, e=" + e);
 		}
 	}
-	public void processRequest(Processor processor, ByteBuffer msg){
-		if(handler != DEFAULT_HANDLER){
-			handler.processRequest(processor, msg);
-		}
-	}
+
 }

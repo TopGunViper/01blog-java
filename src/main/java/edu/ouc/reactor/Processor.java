@@ -3,10 +3,7 @@ package edu.ouc.reactor;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.slf4j.Logger;
@@ -21,11 +18,11 @@ public class Processor implements Runnable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Processor.class);
 
-	final Reactor reactor;
+	final EventLoop eventLoop;
 
 	private SocketChannel sc;
 
-	private final SelectionKey sk;
+	private SelectionKey sk;
 
 	private final ByteBuffer lenBuffer = ByteBuffer.allocate(4);
 
@@ -34,71 +31,72 @@ public class Processor implements Runnable {
 	private ByteBuffer outputDirectBuffer = ByteBuffer.allocateDirect(1024 * 64);
 
 	private LinkedBlockingQueue<ByteBuffer> outputQueue = new LinkedBlockingQueue<ByteBuffer>();
-	
-	private static final int nThreads = Runtime.getRuntime().availableProcessors() * 2;
-	
-	private static ExecutorService workerPool = Executors.newFixedThreadPool(nThreads); 
-	
-	public Processor(Reactor reactor, Selector sel,SocketChannel channel) throws IOException{
-		this.reactor = reactor;
-		sc = channel;
-		sc.configureBlocking(false);
-		sk = sc.register(sel, SelectionKey.OP_READ);
-		sk.attach(this);
-		sel.wakeup();
-	}
 
+	public Processor(EventLoop eventLoop, SocketChannel channel){
+		this.eventLoop = eventLoop;
+		sc = channel;
+		initAndRegister();
+	}
+	private void initAndRegister(){
+		try {
+			sc.configureBlocking(false);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		sk = eventLoop.register(sc, SelectionKey.OP_READ,this);
+	}
 	@Override
 	public void run() {
 		try {
-		if(sc.isOpen() && sk.isValid()){
-			if(sk.isReadable()){
-				doRead();
-			}else if(sk.isWritable()){
-				doSend();
+			if(sc.isOpen() && sk.isValid()){
+				if(sk.isReadable()){
+					doRead();
+				}else if(sk.isWritable()){
+					doSend();
+				}
+			}} catch (RuntimeException e) {
+				LOG.warn("caught runtime exception",e);
+				close();
+			} catch (IOException e) {
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("IOException stack trace", e);
+				}
+				close();
 			}
-		}} catch (RuntimeException e) {
-			LOG.warn("caught runtime exception",e);
-            close();
-		} catch (IOException e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("IOException stack trace", e);
-            }
-            close();
-        }
 	}
 	private synchronized void doRead() throws IOException{
-		
-			int byteSize = sc.read(inputBuffer);
-			
-			if(byteSize < 0){
-				LOG.error("Unable to read additional data");
-			}
-			if(!inputBuffer.hasRemaining()){
-				
-				if(inputBuffer == lenBuffer){
-					//read length
+
+		int byteSize = sc.read(inputBuffer);
+
+		if(byteSize < 0){
+			LOG.error("Unable to read additional data");
+			throw new RuntimeException("Unable to read additional data");
+		}
+		if(!inputBuffer.hasRemaining()){
+
+			if(inputBuffer == lenBuffer){
+				//read length
+				inputBuffer.flip();
+				int len = inputBuffer.getInt();
+				if(len < 0){
+					throw new IllegalArgumentException("Illegal data length");
+				}
+				//prepare for receiving data
+				inputBuffer = ByteBuffer.allocate(len);
+			}else{
+				//read data
+				if(inputBuffer.hasRemaining()){
+					sc.read(inputBuffer);
+				}
+				if(!inputBuffer.hasRemaining()){
 					inputBuffer.flip();
-					int len = inputBuffer.getInt();
-					if(len < 0){
-						throw new IllegalArgumentException("Illegal data length");
-					}
-					//prepare for receiving data
-					inputBuffer = ByteBuffer.allocate(len);
-				}else{
-					//read data
-					if(inputBuffer.hasRemaining()){
-						sc.read(inputBuffer);
-					}
-					if(!inputBuffer.hasRemaining()){
-						inputBuffer.flip();
-						workerPool.submit(new Worker(inputBuffer));
-						//clear lenBuffer and waiting for next reading operation 
-						lenBuffer.clear();
-						inputBuffer = lenBuffer;
-					}
+					processAndHandOff(inputBuffer);
+					//clear lenBuffer and waiting for next reading operation 
+					lenBuffer.clear();
+					inputBuffer = lenBuffer;
 				}
 			}
+		}
 	}
 
 	/**
@@ -108,9 +106,9 @@ public class Processor implements Runnable {
 	 * @return
 	 */
 	private synchronized void processAndHandOff(ByteBuffer bb){
-		reactor.processRequest(Processor.this, bb);
+		eventLoop.processRequest(Processor.this, bb);
 	}
-	
+
 	class Worker implements Runnable{
 		ByteBuffer bb;
 		public Worker(ByteBuffer bb){
@@ -162,7 +160,7 @@ public class Processor implements Runnable {
 				outputQueue.remove();
 			}
 		}
-		synchronized(reactor){
+		synchronized(eventLoop){
 			if(outputQueue.size() == 0){
 				//disable write
 				disableWrite();
@@ -175,7 +173,7 @@ public class Processor implements Runnable {
 	}
 	public void sendBuffer(ByteBuffer bb){
 		try{
-			synchronized(this.reactor){
+			synchronized(this.eventLoop){
 				if(LOG.isDebugEnabled()){
 					LOG.debug("add sendable bytebuffer into outputQueue");
 				}
@@ -215,11 +213,11 @@ public class Processor implements Runnable {
 			sk.interestOps(i & (~SelectionKey.OP_WRITE));			
 		}
 	}
-	
+
 	private void close(){
 		//remove this Processor from reactor
 		//cleanup();
-		
+
 		//close socket
 		closeSocket();
 		//cancel SelectionKey
@@ -237,15 +235,15 @@ public class Processor implements Runnable {
 		if(!sc.isOpen()){
 			return ;
 		}
-		
+
 		LOG.info("Closed socket connection for client "
 				+ sc.socket().getRemoteSocketAddress());
 		try {
-            sc.close();
-        } catch (IOException e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("ignoring exception during socketchannel close", e);
-            }
-        }
+			sc.close();
+		} catch (IOException e) {
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("ignoring exception during socketchannel close", e);
+			}
+		}
 	}
 }
