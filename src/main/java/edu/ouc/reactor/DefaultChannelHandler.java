@@ -10,15 +10,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Server Processor
+ * Server DefaultChannelHandler
  * 
  * @author wqx
  */
-public class Processor implements Runnable {
+public class DefaultChannelHandler implements ChannelHandler {
 
-	private static final Logger LOG = LoggerFactory.getLogger(Processor.class);
+	private static final Logger LOG = LoggerFactory.getLogger(DefaultChannelHandler.class);
 
-	final EventLoop eventLoop;
+	EventLoop eventLoop;
 
 	private SocketChannel sc;
 
@@ -32,21 +32,19 @@ public class Processor implements Runnable {
 
 	private LinkedBlockingQueue<ByteBuffer> outputQueue = new LinkedBlockingQueue<ByteBuffer>();
 
-	public Processor(EventLoop eventLoop, SocketChannel channel){
+	public DefaultChannelHandler(EventLoop eventLoop, SelectionKey key){
 		this.eventLoop = eventLoop;
-		sc = channel;
-		initAndRegister();
-	}
-	private void initAndRegister(){
+		sk = key;
+		sc = (SocketChannel) key.channel();
 		try {
 			sc.configureBlocking(false);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		sk = eventLoop.register(sc, SelectionKey.OP_READ,this);
 	}
+	
 	@Override
-	public void run() {
+	public void handle(Object msg) {
 		try {
 			if(sc.isOpen() && sk.isValid()){
 				if(sk.isReadable()){
@@ -64,7 +62,7 @@ public class Processor implements Runnable {
 				close();
 			}
 	}
-	private synchronized void doRead() throws IOException{
+	private void doRead() throws IOException{
 
 		int byteSize = sc.read(inputBuffer);
 
@@ -100,26 +98,15 @@ public class Processor implements Runnable {
 	}
 
 	/**
-	 * process request and handoff to workerPool
+	 * process request
 	 * 
 	 * @param request
 	 * @return
 	 */
-	private synchronized void processAndHandOff(ByteBuffer bb){
-		eventLoop.processRequest(Processor.this, bb);
+	private void processAndHandOff(ByteBuffer bb){
+		//eventLoop.processRequest(DefaultChannelHandler.this, bb);
 	}
 
-	class Worker implements Runnable{
-		ByteBuffer bb;
-		public Worker(ByteBuffer bb){
-			this.bb = ByteBuffer.allocate(bb.remaining());
-			this.bb.put(bb);
-			this.bb.flip();
-		}
-		public void run(){
-			processAndHandOff(bb);
-		}
-	}
 	private void doSend() throws IOException{
 		/**
 		 * write data to channel£º
