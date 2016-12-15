@@ -1,16 +1,13 @@
-package edu.ouc.reactor;
+package edu.ouc.reactor.channel;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import edu.ouc.reactor.Server.Acceptor;
 
 public class NioServerSocketChannel extends NioChannel{
 
@@ -59,13 +56,12 @@ public class NioServerSocketChannel extends NioChannel{
 	}// end NioChannelSink
 	
 	@Override
-	protected void bind(InetSocketAddress remoteAddress) throws Exception {
-		// TODO Auto-generated method stub
+	public void bind(InetSocketAddress remoteAddress) throws Exception {
 		ServerSocketChannel ssc = (ServerSocketChannel)sc;
 		ssc.bind(remoteAddress);
 	}
 	@Override
-	protected void connect(InetSocketAddress remoteAddress) throws Exception {
+	public void connect(InetSocketAddress remoteAddress) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 	

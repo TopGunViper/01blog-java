@@ -1,4 +1,4 @@
-package edu.ouc.reactor;
+package edu.ouc.reactor.channel;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -180,11 +180,11 @@ public class NioSocketChannel extends NioChannel{
 	}// end NioChannelSink
 
 	@Override
-	protected void bind(InetSocketAddress remoteAddress) throws Exception {
+	public void bind(InetSocketAddress remoteAddress) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 	@Override
-	protected void connect(InetSocketAddress remoteAddress) throws Exception {
+	public void connect(InetSocketAddress remoteAddress) throws Exception {
 		SocketChannel socketChannel = (SocketChannel)sc;
 		socketChannel.connect(remoteAddress);
 	}
