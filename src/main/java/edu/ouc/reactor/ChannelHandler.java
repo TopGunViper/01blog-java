@@ -1,5 +1,7 @@
 package edu.ouc.reactor;
 
+import edu.ouc.reactor.channel.NioChannel;
+
 
 public interface ChannelHandler {
 	
@@ -7,5 +9,5 @@ public interface ChannelHandler {
 	
 	void channelRead(NioChannel channel, Object msg) throws Exception;
 	
-	void exceptionCaught(NioChannel channel, Object exception) throws Exception;
+	void exceptionCaught(NioChannel channel, Throwable t) throws Exception;
 }

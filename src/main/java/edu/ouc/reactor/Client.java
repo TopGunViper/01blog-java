@@ -29,9 +29,10 @@ public class Client{
 	public Client(){
 		try {
 			sc = SocketChannel.open();
+			sc.configureBlocking(true);
 		} catch (IOException e) {}
 	}
-	
+
 	public void connect(InetSocketAddress address){
 		this.remoteAddress = address;
 		try {
@@ -42,7 +43,7 @@ public class Client{
 			this.isActive = false;
 			throw new RuntimeException("Can not connecting to remoteAddress:" + this.remoteAddress);
 		}
-		LOG.error("Successfully connecting to remoteAddress:" + this.remoteAddress);
+		LOG.info("Successfully connecting to remoteAddress:" + this.remoteAddress);
 	}
 	public Socket socket(){
 		return sc.socket();
@@ -66,7 +67,7 @@ public class Client{
 	 * @return
 	 * @throws IOException 
 	 */
-	public ByteBuffer send(final ByteBuffer msg){
+	public ByteBuffer syncSend(final ByteBuffer msg){
 
 		if(msg == null){
 			throw new IllegalArgumentException("msg is null");
@@ -83,23 +84,24 @@ public class Client{
 			ByteBuffer bb = ByteBuffer.allocate(capacity + 4);
 			bb.put(lenBuffer);
 			bb.put(msg);
-
 			bb.flip();//prepare for write
-			sc.write(bb);//blocking model
-
-			if(LOG.isDebugEnabled()){
-				LOG.debug("Write msg to SocketChannel");
+			while(bb.hasRemaining()){
+				sc.write(bb);//blocking model
 			}
 		}catch(Exception e){
 			LOG.error("Unexpected Exception during writing msg, e=" + e);
 		}
-		
+
 		return readResponse();
 	}
 	private ByteBuffer readResponse(){
 		ByteBuffer resp = null;;
 		try {
 			int len = readLength();
+			if(len == 0){
+				close();
+				return null;
+			}
 			resp = ByteBuffer.allocate(len);
 			sc.read(resp);
 		} catch (IOException e) {
@@ -107,12 +109,21 @@ public class Client{
 		}
 		return (ByteBuffer) resp.flip();
 	}
-	private int readLength(){
-		ByteBuffer lenBuffer = ByteBuffer.allocateDirect(4);
+	private int readLength() throws IOException{
+		int length = 0;
 		try {
+			ByteBuffer lenBuffer = ByteBuffer.allocateDirect(4);
 			sc.read(lenBuffer);//blocked
-		} catch (IOException e) {}
-		lenBuffer.flip();
-		return lenBuffer.getInt();
+
+			lenBuffer.flip();
+			length = lenBuffer.getInt();
+		}catch(Exception e){
+			length = -1;
+		}finally{
+			if(length <= 0 || length > 1024){
+				length = 0;
+			}
+		}
+		return length;
 	}
 }

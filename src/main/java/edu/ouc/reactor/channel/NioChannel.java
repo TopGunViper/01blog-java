@@ -27,7 +27,7 @@ public abstract class NioChannel {
 
 	protected volatile ChannelHandler handler;
 
-	public NioChannel(SelectableChannel sc, int interestOps){
+	public NioChannel(SelectableChannel sc){
 		this.sc = sc;
 		try {
 			sc.configureBlocking(false);
@@ -36,7 +36,6 @@ public abstract class NioChannel {
 		}
 		sink = nioChannelSink();
 	}
-	//selectionKey = sc.register(reactor().selector, interestOps, this);
 	
 	public void register(Reactor reactor, int interestOps){
 		this.reactor = reactor;
@@ -51,7 +50,7 @@ public abstract class NioChannel {
 	
 	public abstract void connect(InetSocketAddress remoteAddress) throws Exception;
 	
-	protected void handler(ChannelHandler h){
+	public void handler(ChannelHandler h){
 		handler = h;
 	}
 	public SelectableChannel channel(){
@@ -81,6 +80,26 @@ public abstract class NioChannel {
 		}
 	}
 
+	protected void fireChannelRead(ByteBuffer bb){
+		try {
+			handler.channelRead(this, bb);
+		} catch (Exception e) {
+			fireExceptionCaught(e);
+		}
+	}
+	protected void fireExceptionCaught(Throwable t){
+		try {
+			handler.exceptionCaught(this, t);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	public boolean isOpen(){
+		return sc.isOpen();
+	}
+	public void close(){
+		sink().close();
+	}
 	public abstract NioChannelSink nioChannelSink();
 
 	public interface NioChannelSink{
@@ -91,5 +110,6 @@ public abstract class NioChannel {
 
 		void sendBuffer(ByteBuffer bb);
 		
+		void close();
 	}
 }

@@ -3,8 +3,6 @@ package edu.ouc.reactor.channel;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -15,14 +13,12 @@ public class NioSocketChannel extends NioChannel{
 
 	private static final Logger LOG = LoggerFactory.getLogger(NioSocketChannel.class);
 
-	public NioSocketChannel(SocketChannel sc, int interestOps){
-		super( sc, interestOps);
+	public NioSocketChannel() throws IOException{
+		super( newSocket());
 	}
-	
-	public NioSocketChannel(int interestOps) throws IOException{
-		super( newSocket(), SelectionKey.OP_READ);
+	public NioSocketChannel(SocketChannel sc) throws IOException{
+		super(sc);
 	}
-	
 	public static SocketChannel newSocket(){
 		SocketChannel socketChannel = null;
 		try {
@@ -36,10 +32,12 @@ public class NioSocketChannel extends NioChannel{
 	public NioChannelSink nioChannelSink() {
 		return new NioSocketChannelSink();
 	}
-	
-	class NioSocketChannelSink implements NioChannelSink{
 
-		final ByteBuffer lenBuffer = ByteBuffer.allocate(4);
+	class NioSocketChannelSink implements NioChannelSink{
+		
+		private static final int MAX_LEN = 1024;
+		
+		ByteBuffer lenBuffer = ByteBuffer.allocate(4);
 
 		ByteBuffer inputBuffer = lenBuffer;
 
@@ -47,9 +45,20 @@ public class NioSocketChannel extends NioChannel{
 
 		LinkedBlockingQueue<ByteBuffer> outputQueue = new LinkedBlockingQueue<ByteBuffer>();
 
-		
-		public void doRead() {
+		public void close(){
+			//clear buffer
+			outputDirectBuffer = null;
 
+			try {
+				if(sc != null){
+					sc.close();
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		public void doRead() {
+			
 			SocketChannel socketChannel = (SocketChannel)sc;
 
 			int byteSize;
@@ -64,13 +73,14 @@ public class NioSocketChannel extends NioChannel{
 
 					if(inputBuffer == lenBuffer){
 						//read length
-						inputBuffer.flip();
-						int len = inputBuffer.getInt();
-						if(len < 0){
-							throw new IllegalArgumentException("Illegal data length");
+						lenBuffer.flip();
+						int len = lenBuffer.getInt();
+						if(len < 0 || len > MAX_LEN){
+							throw new IllegalArgumentException("Illegal data length, len:" + len);
 						}
 						//prepare for receiving data
 						inputBuffer = ByteBuffer.allocate(len);
+						inputBuffer.clear();
 					}else{
 						//read data
 						if(inputBuffer.hasRemaining()){
@@ -78,7 +88,8 @@ public class NioSocketChannel extends NioChannel{
 						}
 						if(!inputBuffer.hasRemaining()){
 							inputBuffer.flip();
-							//processAndHandOff(inputBuffer);
+							
+							fireChannelRead(inputBuffer);
 							
 							//clear lenBuffer and waiting for next reading operation 
 							lenBuffer.clear();
@@ -86,9 +97,11 @@ public class NioSocketChannel extends NioChannel{
 						}
 					}
 				}
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			} catch (Throwable t) {
+				if(LOG.isDebugEnabled()){
+					LOG.debug("Exception :" + t);
+				}
+				fireExceptionCaught(t);
 			}
 		}
 
@@ -143,8 +156,8 @@ public class NioSocketChannel extends NioChannel{
 						enableWrite();
 					}
 				}
-			} catch (IOException e) {
-				e.printStackTrace();
+			} catch (Throwable t) {
+				fireExceptionCaught(t);
 			}
 		}
 		private ByteBuffer wrapWithHead(ByteBuffer bb){
@@ -153,19 +166,16 @@ public class NioSocketChannel extends NioChannel{
 			int len = bb.remaining();
 			lenBuffer.putInt(len);
 			ByteBuffer resp = ByteBuffer.allocate(len+4);
-			
+
 			lenBuffer.flip();
 			resp.put(lenBuffer);
 			resp.put(bb);
-			
+
 			return resp;
 		}
 		public void sendBuffer(ByteBuffer bb){
 			try{
 				synchronized(this){
-					if(LOG.isDebugEnabled()){
-						LOG.debug("add sendable bytebuffer into outputQueue");
-					}
 					//wrap ByteBuffer with length header
 					ByteBuffer wrapped = wrapWithHead(bb);
 
