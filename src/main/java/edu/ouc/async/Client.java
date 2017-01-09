@@ -4,7 +4,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import com.alibaba.fastjson.JSON;
@@ -13,16 +12,16 @@ public class Client {
 
 	private final BlockingQueue<Packet> outgoingQueue = new LinkedBlockingQueue<Packet>(); 
 
-	private SendThread sendThread;
+	private Worker worker;
 
 	public Client(String host, int port){
-		sendThread = new SendThread(host,port);
-		sendThread.start();
+		worker = new Worker(host,port);
+		worker.start();
 	}
 	/**
 	 * 
 	 * @param nodeInfo:模拟节点信息
-	 * @param cb：回调函�?
+	 * @param cb：回调函数
 	 * @param ctx：上下文信息context
 	 */
 	public void asyncCreate(String nodeInfo,CallBack cb, Object ctx){
@@ -35,13 +34,13 @@ public class Client {
 		outgoingQueue.offer(packet);
 	}
 
-	class SendThread extends Thread {
+	class Worker extends Thread {
 
 		private String host;
 
 		private int port;
 
-		public SendThread(String host, int port){
+		public Worker(String host, int port){
 			this.host = host;
 			this.port = port;
 			setDaemon(true);
@@ -87,22 +86,5 @@ public class Client {
 
 			return resp;
 		}
-	}
-
-	public static void main(String args[]) throws Exception{
-		
-		final CountDownLatch latch = new CountDownLatch(1);
-		
-		Client client = new Client("localhost",8888);
-		
-		client.asyncCreate("exist NodeInfo", new CallBack(){
-			@Override
-			public void process(int rc, Object response, Object ctx) {
-				System.out.println("rc:" + rc + ",response:" + response + ",ctx:" + ctx);
-				latch.countDown();
-			}
-		}, "I'm context");
-		System.out.println("create方法立即返回");
-		latch.await();
 	}
 }
