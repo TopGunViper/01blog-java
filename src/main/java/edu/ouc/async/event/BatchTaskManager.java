@@ -1,6 +1,5 @@
 package edu.ouc.async.event;
 
-import java.util.concurrent.TimeUnit;
 
 public class BatchTaskManager {
 
