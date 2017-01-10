@@ -1,6 +1,12 @@
 package edu.ouc.async.event;
 
-
+/**
+ * Listener接口
+ * 
+ * @author wqx
+ *
+ * @param <T>
+ */
 public interface Listener<T> {
 
 	/**
@@ -9,29 +15,13 @@ public interface Listener<T> {
 	 * @param event
 	 */
 	public void onSuccess(Event<T> event);
-	
+
 	/**
-	 * timeout
-	 * 
-	 * @param event
-	 * @param timeout
-	 */
-	public void onTimeout(Event<T> event, int timeout);
-	
-	/**
-	 * 异常
+	 * failure
 	 * 
 	 * @param event
 	 * @param t
 	 */
 	void onException(Event<T> event, Throwable t);
-	
-	/**
-	 * failure
-	 * 
-	 * @param event
-	 * @param msg
-	 */
-	public void onFailure(Event<T> event, Object msg);
 	
 }
