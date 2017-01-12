@@ -9,14 +9,18 @@ import org.slf4j.LoggerFactory;
  * @author wqx
  *
  */
-public class TimeInterceptor implements MethodInterceptor {
+public class TimeLogInterceptor implements MethodInterceptor {
 
-	private static Logger logger = LoggerFactory.getLogger(TimeInterceptor.class);
+	private static Logger logger = LoggerFactory.getLogger(TimeLogInterceptor.class);
+	
+	String msg;
+	
 	@Override
 	public Object invoke(MethodInvocation invocation) throws Exception {
 		long startTime = System.currentTimeMillis();
 		Object relVal = invocation.executeNext();
-		logger.info(invocation.getMethod().getName() + " execute time:" + (System.currentTimeMillis() - startTime) + "ms.");
+		msg = invocation.getMethod().getName() + " execute time:" + (System.currentTimeMillis() - startTime) + "ms.";
+		logger.info(msg);
 		return relVal;
 	}
 }
