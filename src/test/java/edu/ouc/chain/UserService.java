@@ -8,5 +8,7 @@ package edu.ouc.chain;
  */
 public interface UserService {
 	
-	public void insert(Object obj);
+	void update(Object obj);
+	
+	void delete(Object obj);
 }
