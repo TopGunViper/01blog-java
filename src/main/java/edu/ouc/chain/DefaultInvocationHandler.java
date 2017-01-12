@@ -8,10 +8,11 @@ public class DefaultInvocationHandler implements InvocationHandler {
 
 	private Object target;
 	
-	private InterceptorChainFactory chainFactory = new InterceptorChainFactory();
+	private List<MethodInterceptor> interceptorsChain;
 	
-	public DefaultInvocationHandler(Object target){
+	public DefaultInvocationHandler(Object target, List<MethodInterceptor> interceptorsChain){
 		this.target = target;
+		this.interceptorsChain = interceptorsChain;
 	}
 	
 	@Override
@@ -19,7 +20,7 @@ public class DefaultInvocationHandler implements InvocationHandler {
 			throws Throwable {
 		MethodInvocation methodInvocation;
 		
-		List<Object> chain = chainFactory.getInterceptorList();
+		List<MethodInterceptor> chain = interceptorsChain;
 		
 		Object relVal;
 		if(chain != null && !chain.isEmpty()){
