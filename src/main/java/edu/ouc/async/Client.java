@@ -46,29 +46,32 @@ public class Client {
 			setDaemon(true);
 		}
 		public void run(){
-			Packet packet = null;
-			try {
-				packet = outgoingQueue.take();
-			} catch (InterruptedException e) {}
-			
-			Object resp = sendPacket(packet);
-			
-			Packet p = (Packet)resp;
-			
-			packet.getCb().process(p.getErrorCode(), p.getResponse(), p.getCtx());
+			while(Thread.interrupted()){
+
+				Packet packet = null;
+				try {
+					packet = outgoingQueue.take();
+				} catch (InterruptedException e) {}
+
+				Object resp = sendPacket(packet);
+
+				Packet p = (Packet)resp;
+
+				packet.getCb().process(p.getErrorCode(), p.getResponse(), p.getCtx());
+			}
 
 		}
 		public Object sendPacket(Packet packet){
 			Object resp = null;
 			try{
 				Socket socket = new Socket(host,port);
-				
+
 				OutputStream oos = socket.getOutputStream();
 				InputStream ois = socket.getInputStream();
 				try{
 					oos.write(JSON.toJSONString(packet).getBytes());
 					oos.flush();
-					
+
 					byte[] buf = new byte[1024];
 					int recvSize = ois.read(buf);
 					String text = new String(buf,0,recvSize);
