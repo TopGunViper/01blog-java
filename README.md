@@ -1,5 +1,6 @@
 # 01blog
-> ×¨×¢ÓÚÒ»Ğ©»ù´¡Ô­ÀíµÄÊµÏÖ£¬Í¨¹ı¼òµ¥µÄÊµÀı¼ÓÉî¶Ô¿ªÔ´×é¼şÉè¼ÆÔ­ÀíµÄÕÆÎÕ¡£
+> ä¸“æ³¨äºä¸€äº›åŸºç¡€åŸç†çš„å®ç°ï¼Œé€šè¿‡ç®€å•çš„å®ä¾‹åŠ æ·±å¯¹å¼€æºç»„ä»¶è®¾è®¡åŸç†çš„æŒæ¡ã€‚
 
-#### 1. [SpringAOPÔ­Àí(Proxy + Chain of Responsibility)](https://github.com/TopGunViper/01blog/tree/master/src/main/java/edu/ouc/chain)
-#### 2. [ReactorÄ£ĞÍµ¥Ïß³Ì°æ±¾](https://github.com/TopGunViper/01blog/tree/feature_reactor_singleThreadVersion/src/main/java/edu/ouc/reactor)
+#### 1. [SpringAOPåŸç†(Proxy + Chain of Responsibility)](https://github.com/TopGunViper/01blog/tree/master/src/main/java/edu/ouc/chain)
+#### 2. [Reactoræ¨¡å‹å•çº¿ç¨‹ç‰ˆæœ¬](https://github.com/TopGunViper/01blog/tree/feature_reactor_singleThreadVersion/src/main/java/edu/ouc/reactor)
+#### 3.hahahah
