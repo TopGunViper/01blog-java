@@ -3,8 +3,7 @@ package edu.ouc.orm;
 import java.io.InputStream;
 
 /**
- * ×ÊÔ´¼ÓÔØÆ÷
- * 
+ *
  * @author wqx
  *
  */
