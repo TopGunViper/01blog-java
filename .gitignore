@@ -20,5 +20,6 @@ target
 .settings
 .classpath
 /.idea
-/*.iml
+/**/*.iml
+/**/.DS_Store
 
