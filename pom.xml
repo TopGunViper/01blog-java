@@ -8,6 +8,10 @@
     <packaging>pom</packaging>
 
 
+    <modules>
+        <module>protoc-maven-plugin</module>
+        <module>sample</module>
+    </modules>
 	<properties>
 		<!-- log4j日志文件管理包版本 -->
 		<slf4j.version>1.7.5</slf4j.version>
